@@ -127,7 +127,40 @@ async function main(): Promise<void> {
       readFileSync(join(BUILD_ROOT, 'pnpm-lock.yaml'), 'utf8'),
       readDesktopCorePackageSet(BUILD_ROOT, release.version),
     )
+    await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:sharp-wasm-manifest', async () => {
+      // Linux desktop: native sharp decode segfaults under Electron (glib symbol leak,
+      // electron#46323 — verified deterministic). Register @img/sharp-wasm32 in the
+      // project manifest and resolve it through `install --lockfile-only` — the
+      // `pnpm add` path hangs after printing Done in this environment, while the plain
+      // install family exits reliably — so the frozen install below brings the WASM
+      // backend in alongside the native packages.
+      if (process.platform !== 'linux') return
+      const lockfile = readFileSync(join(BUILD_ROOT, 'pnpm-lock.yaml'), 'utf8')
+      const sharpVersion = /^  ['"]?sharp@([^:(\s'"]+)/mu.exec(lockfile)?.[1]
+      if (sharpVersion === undefined) throw new Error('desktop runtime: sharp version not found in staged lockfile')
+      const manifestPath = join(BUILD_ROOT, 'package.json')
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      manifest.dependencies = { ...manifest.dependencies, '@img/sharp-wasm32': sharpVersion }
+      writeFileSync(manifestPath, `${JSON.stringify(manifest, undefined, 2)}\n`)
+      await runPnpm(['install', '--lockfile-only'])
+    })
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:install', () => runPnpm(['install', '--prod', '--frozen-lockfile', '--trust-lockfile']))
+    await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:sharp-wasm', async () => {
+      // Remove the native backend after the frozen install: sharp only falls back to the
+      // WASM build when the native platform package fails to resolve, so both halves of
+      // the swap must land before materialize, which records what survives into the
+      // runtime descriptor below.
+      if (process.platform !== 'linux') return
+      const modules = join(BUILD_ROOT, 'node_modules')
+      rmSync(join(modules, '@img', 'sharp-linux-x64'), { recursive: true, force: true })
+      rmSync(join(modules, '@img', 'sharp-libvips-linux-x64'), { recursive: true, force: true })
+      if (existsSync(join(modules, '@img', 'sharp-linux-x64')) || existsSync(join(modules, '@img', 'sharp-libvips-linux-x64'))) {
+        throw new Error('desktop runtime: native sharp backend survived removal')
+      }
+      if (!existsSync(join(modules, '@img', 'sharp-wasm32'))) {
+        throw new Error('desktop runtime: @img/sharp-wasm32 missing after frozen install')
+      }
+    })
     const packageSet = readDesktopCorePackageSet(BUILD_ROOT, release.version)
     const targetName = resolveDesktopBuildTarget()
     const target = { platform: process.platform, arch: targetName.endsWith('arm64') ? 'arm64' : 'x64' }
