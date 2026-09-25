@@ -147,7 +147,7 @@ export function createElectronBuilderConfig(
     asarUnpack: unpack,
     extraResources: [
       { from: buildPaths.runtime, to: 'runtime' },
-      { from: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)), to: 'icon.png' },
+      { from: fileURLToPath(new URL('../resources/icon.png', import.meta.url)), to: 'icon.png' },
       // Windows tray bitmaps; macOS keeps the Dock and ships no menu bar icon.
       ...(packagesWindows ? [{ from: fileURLToPath(new URL('../resources/tray-windows.ico', import.meta.url)), to: 'tray.ico' }] : []),
     ],
@@ -236,7 +236,9 @@ export function createElectronBuilderConfig(
       category: 'Development',
       maintainer: 'DeepSeek Harness <noreply@deepseek.com>',
       executableName: 'deepseek-harness',
-      icon: fileURLToPath(new URL('../resources/icon.png', import.meta.url)),
+      // Standard hicolor size set; a single PNG would install one non-standard size only.
+      icon: fileURLToPath(new URL('../resources/icons-linux', import.meta.url)),
+      syncDesktopName: true,
       target: ['deb'],
     },
     nsis: {
