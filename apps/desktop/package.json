@@ -4,6 +4,7 @@
   "version": "0.1.7-rc.2",
   "private": true,
   "license": "MIT",
+  "homepage": "https://github.com/deepseek-ai/deepseek-harness",
   "type": "module",
   "main": "lib/main.js",
   "scripts": {
