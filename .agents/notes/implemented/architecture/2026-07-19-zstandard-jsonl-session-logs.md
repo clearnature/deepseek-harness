@@ -32,7 +32,7 @@ A frame-boundary scanner reads the standard magic, variable header fields, block
 
 Listing reads in bounded chunks only until the first complete frame is available, validates and decompresses that header frame, and never reads an event frame. The dedicated header frame therefore preserves metadata-only listing even for very large session logs.
 
-EOF inside the final frame is a torn tail. The frame belongs to an append that never resolved, so none of its records were acknowledged durable: repair truncates from that frame's starting byte, retains all prior complete frames, and appends the coordinator's synthetic tool, step, and turn closers as one new checksummed frame ([export and pre-release trims](../../archived/simplification/2026-08-27-persistence-export-and-pre-release-trims.md) owns dropping the earlier partial-plaintext salvage).
+EOF inside the final frame is a torn tail. The frame belongs to an append that never resolved, so none of its records were acknowledged durable: repair truncates from that frame's starting byte, retains all prior complete frames, and durably rewrites the complete JSONL records recovered from the torn frame's decodable prefix before the session's next append; the coordinator's synthetic tool, step, and turn closers arrive as ordinary appended batches through the owning write handle ([Handle-based session persistence](2026-08-27-handle-based-session-persistence.md)). [Export and pre-release trims](../../archived/simplification/2026-08-27-persistence-export-and-pre-release-trims.md) owns dropping the earlier partial-plaintext salvage.
 
 ### Consumers and verification
 
