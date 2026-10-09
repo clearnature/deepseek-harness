@@ -23,7 +23,12 @@ export async function smokePreparedRuntime(
   root: string, node: string, resourcesRuntime: string, descriptor: DesktopRuntimeDescriptor,
 ): Promise<void> {
   const cache = await mkdtemp(join(tmpdir(), 'desktop-native-smoke-'))
-  const environment = { ...scrubWindowsSigningEnvironment(process.env), NODE_OPTIONS: '',
+  const inherited = scrubWindowsSigningEnvironment(process.env)
+  // NODE_PATH must not leak into the smoke: the builder shell points it at the pnpm
+  // global store, which still carries the native sharp build this closure drops, so the
+  // payload would resolve packages outside the prepared tree and mask real regressions.
+  delete (inherited as Record<string, string | undefined>).NODE_PATH
+  const environment = { ...inherited, NODE_OPTIONS: '',
     NARB_NATIVE_CACHE_DIR: cache, NARB_DISABLE_NATIVE_CACHE: '0' }
   try {
     const archive = runtimeArchivePath(root)
