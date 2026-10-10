@@ -1,5 +1,5 @@
 /** Locate the complete installed Office package closure used by standalone CLI processes. */
-import { existsSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { isAbsolute, join, relative, sep } from 'node:path'
@@ -66,7 +66,42 @@ export async function officePackageDirectories(staging, target) {
   const engineDirectory = join(staging, 'node_modules', engineName)
   if (!existsSync(engineDirectory)) throw new Error(`Office engine ${engineName} required for ${target.platform}/${target.arch} is missing.`)
   await visit(engineDirectory)
+  const placeholderDirectory = join(staging, 'node_modules', `@deepseek-ai/libreoffice-kit-linux-${target.arch}-glibc`)
+  if (target.platform === 'linux' && existsSync(placeholderDirectory)) await visit(placeholderDirectory)
   return [...packages].sort()
+}
+
+/**
+ * Write the placeholder native Linux engine that routes the kit to its WASM engine.
+ *
+ * The kit resolves its native engine first and probes installed packages with
+ * `lstatSync(..., { throwIfNoEntry: false })`, which reports a missing package as present inside an
+ * ASAR archive, so the documented WASM fallback becomes unreachable in packaged applications.
+ * The placeholder declares a glibc floor above every real host, and the kit's own compatibility
+ * gate then selects the WASM engine. The kit reads only its manifest; nothing executes it.
+ *
+ * @param {string} staging - Symlink-free installed Node project.
+ * @param {{ platform: string, arch: string }} target - Distribution platform and CPU.
+ * @returns {void}
+ */
+export function writeLinuxEnginePlaceholder(staging, target) {
+  if (target.platform !== 'linux') throw new Error(`Office engine placeholder is Linux-only; got ${target.platform}`)
+  const suffix = `linux-${target.arch}-glibc`
+  const name = `@deepseek-ai/libreoffice-kit-${suffix}`
+  const directory = join(staging, 'node_modules', '@deepseek-ai', `libreoffice-kit-${suffix}`)
+  mkdirSync(join(directory, 'bin'), { recursive: true })
+  mkdirSync(join(directory, 'program'), { recursive: true })
+  writeFileSync(join(directory, 'package.json'), `${JSON.stringify({ name, version: '0.1.1' }, null, 2)}\n`)
+  writeFileSync(join(directory, 'prebuilds.json'), `${JSON.stringify({
+    version: '0.1.1',
+    schemaVersion: 1,
+    status: 'built',
+    platform: suffix,
+    engine: { kind: 'native', glibcMinimum: '99.0', executable: 'bin/placeholder', programDirectory: 'program' },
+  }, null, 2)}\n`)
+  writeFileSync(join(directory, 'bin', 'placeholder'), '#!/bin/sh\nexit 1\n')
+  chmodSync(join(directory, 'bin', 'placeholder'), 0o755)
+  writeFileSync(join(directory, 'program', 'placeholder'), 'The glibc floor routes every host to the WASM engine.\n')
 }
 
 /**

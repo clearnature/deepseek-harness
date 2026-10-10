@@ -14,4 +14,5 @@ export function selectOfficeEngine(manifest: { optionalDependencies?: Record<str
  * @param target - Distribution platform and CPU.
  * @returns Installed package directories.
  */
+export function writeLinuxEnginePlaceholder(staging: string, target: { platform: string, arch: string }): void
 export function officePackageDirectories(staging: string, target: { platform: string; arch: string }): Promise<string[]>
