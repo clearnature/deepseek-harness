@@ -24,7 +24,7 @@ const FILE_SETTINGS = ['DSH_DESKTOP_WINDOWS_CER_FILE', 'DSH_DESKTOP_WINDOWS_SIGN
  * @param {NodeJS.ProcessEnv} environment Parent environment, retained for build tools and networking.
  * @returns {NodeJS.ProcessEnv} Unsigned build environment with the standard application identifier and no update policy.
  */
-export function localMacOSPackageEnvironment(environment = process.env) {
+export function localUnsignedPackageEnvironment(environment = process.env) {
   return {
     ...Object.fromEntries(Object.entries(environment).filter(([name]) => !AMBIENT_RELEASE_SETTING.test(name))),
     DSH_DESKTOP_APP_ID: 'com.deepseek.harness',
@@ -40,6 +40,9 @@ export function localMacOSPackageEnvironment(environment = process.env) {
  * @returns {NodeJS.ProcessEnv} Isolated environment with file-owned release settings.
  */
 export function loadDesktopPackageEnvironment(platform, environment = process.env, appRoot = APP_ROOT) {
+  // Linux packaging is always an unsigned local-style build with no update feed and no release
+  // settings file, so it takes the same defaults as an unsigned macOS development package.
+  if (platform === 'linux') return localUnsignedPackageEnvironment(environment)
   const path = join(appRoot, platform === 'win32' ? '.env.windows' : '.env.macos')
   let contents
   try {
@@ -85,17 +88,18 @@ function requireReadableFile(environment, name) {
 /**
  * Validate the packaging mode before preparation without invoking a token or Apple's services.
  * @param {NodeJS.ProcessEnv} environment Selected local defaults or file-owned release settings.
- * @param {{ platform: 'win32' | 'darwin', arch: string }} target Selected release target.
+ * @param {{ platform: 'linux' | 'win32' | 'darwin', arch: string }} target Selected release target.
  * @param {{ unsigned?: boolean, prepareOnly?: boolean }} options Explicit packaging mode.
  * @returns {void}
  */
 export function validateDesktopPackageEnvironment(environment, target, options = {}) {
   resolveDesktopAppId(environment)
   resolveNpmRegistry(environment)
-  if (target.platform !== 'darwin' || !options.unsigned) resolveDesktopPolicyEnvironment(environment)
+  // Linux builds ship no auto-update feed: no policy metadata, channel configuration, or signing input.
+  if (target.platform !== 'linux' && (target.platform !== 'darwin' || !options.unsigned)) resolveDesktopPolicyEnvironment(environment)
   if (target.platform === 'darwin') resolveMacOSPackageSettings(environment)
-  else resolveWindowsPackageSettings(environment)
-  if (options.unsigned) return
+  else if (target.platform === 'win32') resolveWindowsPackageSettings(environment)
+  if (target.platform === 'linux' || options.unsigned) return
   if (!options.prepareOnly) resolveDesktopAutoUpdateConfig(environment, target.platform, target.arch)
   if (target.platform === 'win32') {
     if (!options.prepareOnly) createWindowsTokenSigner({

@@ -5,7 +5,7 @@
  * @param environment Parent environment, retained for build tools and networking.
  * @returns Unsigned build environment with the standard application identifier and no update policy.
  */
-export function localMacOSPackageEnvironment(environment?: NodeJS.ProcessEnv): NodeJS.ProcessEnv
+export function localUnsignedPackageEnvironment(environment?: NodeJS.ProcessEnv): NodeJS.ProcessEnv
 
 /**
  * Read the target's required UTF-8 dotenv file; release settings never fall back to ambient values.
@@ -15,7 +15,7 @@ export function localMacOSPackageEnvironment(environment?: NodeJS.ProcessEnv): N
  * @returns Isolated environment with file-owned release settings.
  */
 export function loadDesktopPackageEnvironment(
-  platform: 'win32' | 'darwin',
+  platform: 'linux' | 'win32' | 'darwin',
   environment?: NodeJS.ProcessEnv,
   appRoot?: string,
 ): NodeJS.ProcessEnv
@@ -29,6 +29,6 @@ export function loadDesktopPackageEnvironment(
  */
 export function validateDesktopPackageEnvironment(
   environment: NodeJS.ProcessEnv,
-  target: { platform: 'win32' | 'darwin', arch: string },
+  target: { platform: 'linux' | 'win32' | 'darwin', arch: string },
   options?: { unsigned?: boolean, prepareOnly?: boolean },
 ): void

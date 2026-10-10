@@ -24,6 +24,9 @@ const UPDATE_ENVIRONMENTS = {
 
 const UPDATE_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64'])
 
+/** Every build target that writes a completion record beside the electron-builder artifacts. */
+const BUILD_RECORD_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64', 'linux-x64'])
+
 /**
  * Resolve the update deployment, defaulting local release work to test.
  * @param {NodeJS.ProcessEnv} env - Packaging or upload environment.
@@ -54,12 +57,12 @@ export function resolveDesktopAutoUpdateTarget(platform, arch) {
 
 /**
  * Return the local completion record filename for one packaged target.
- * @param {'mac-arm64' | 'mac-x64' | 'win-x64'} target - Supported release target.
+ * @param {'mac-arm64' | 'mac-x64' | 'win-x64' | 'linux-x64'} target - Supported build target.
  * @returns {string} Filename stored beside electron-builder artifacts.
  */
 export function desktopBuildRecordFilename(target) {
-  if (!UPDATE_TARGETS.has(target)) {
-    throw new Error(`desktop auto-update: unsupported target ${target}`)
+  if (!BUILD_RECORD_TARGETS.has(target)) {
+    throw new Error(`desktop build record: unsupported target ${target}`)
   }
   return `${target}-release.json`
 }

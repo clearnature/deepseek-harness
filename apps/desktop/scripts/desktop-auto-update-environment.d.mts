@@ -1,3 +1,4 @@
+import type { DesktopBuildTarget } from './desktop-build-paths.mjs'
 /** Environment variable that selects the Desktop update deployment. */
 export const DESKTOP_AUTO_UPDATE_ENV: 'DSH_DESKTOP_AUTO_UPDATE_ENV'
 
@@ -49,7 +50,7 @@ export function resolveDesktopAutoUpdateTarget(
  * @param target - Supported release target.
  * @returns Filename stored beside electron-builder artifacts.
  */
-export function desktopBuildRecordFilename(target: DesktopAutoUpdateTarget): string
+export function desktopBuildRecordFilename(target: DesktopBuildTarget): string
 
 /**
  * Return the electron-builder channel metadata filename for an application version.

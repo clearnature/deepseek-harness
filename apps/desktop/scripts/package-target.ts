@@ -10,7 +10,7 @@ import {
 } from './desktop-auto-update-environment.mjs'
 import { desktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { packageMacOSArtifacts, type DesktopPrepackagedArtifact } from './package-macos.ts'
-import { loadDesktopPackageEnvironment, localMacOSPackageEnvironment, validateDesktopPackageEnvironment } from './desktop-package-environment.mjs'
+import { loadDesktopPackageEnvironment, localUnsignedPackageEnvironment, validateDesktopPackageEnvironment } from './desktop-package-environment.mjs'
 import { createPackagingRun, recordPackagingEvent } from './packaging-run.mjs'
 import { withWindowsSigningStage } from './windows-signing-stage.mjs'
 import { prepareWindowsSignatureCacheDirectory, resolveWindowsSignatureCacheDirectory } from './windows-signature-cache-directory.mjs'
@@ -47,14 +47,14 @@ const DESKTOP_UPLOAD_CREDENTIAL_ENV_NAMES = new Set([
 const AUTOMATIC_BUILD_VERSION = 'auto'
 
 /** Fixed platform and architecture identifiers exposed by package scripts. */
-export type DesktopPackageTargetName = 'mac-arm64' | 'mac-x64' | 'win-x64'
+export type DesktopPackageTargetName = 'mac-arm64' | 'mac-x64' | 'win-x64' | 'linux-x64'
 
 /** One supported release target and its electron-builder selectors. */
 export interface DesktopPackageTarget {
   readonly name: DesktopPackageTargetName
-  readonly platform: 'darwin' | 'win32'
+  readonly platform: 'darwin' | 'linux' | 'win32'
   readonly arch: 'arm64' | 'x64'
-  readonly builderPlatform: '--mac' | '--win'
+  readonly builderPlatform: '--linux' | '--mac' | '--win'
   readonly builderArch: '--arm64' | '--x64'
 }
 
@@ -78,6 +78,13 @@ const TARGETS: Record<DesktopPackageTargetName, DesktopPackageTarget> = {
     platform: 'win32',
     arch: 'x64',
     builderPlatform: '--win',
+    builderArch: '--x64',
+  },
+  'linux-x64': {
+    name: 'linux-x64',
+    platform: 'linux',
+    arch: 'x64',
+    builderPlatform: '--linux',
     builderArch: '--x64',
   },
 }
@@ -145,15 +152,17 @@ function writeReleaseRecord(
   }
   const buildVersion = resolveDesktopBuildVersion(environment, dshVersion)
   const packaged = resolveDesktopBuildCommit(environment)
-  const update = resolveDesktopAutoUpdateConfig(environment, target.platform, target.arch)
+  // Linux builds have no auto-update feed, so their record carries no channel configuration.
+  const update = target.platform === 'linux'
+    ? undefined
+    : resolveDesktopAutoUpdateConfig(environment, target.platform, target.arch)
   const recordPath = join(artifactsRoot, desktopBuildRecordFilename(target.name))
   const temporaryPath = `${recordPath}.tmp`
   writeFileSync(temporaryPath, `${JSON.stringify({
     schemaVersion: 1,
     target: target.name,
     version: buildVersion,
-    environment: update.environment,
-    publicUrl: update.publicUrl,
+    ...(update === undefined ? {} : { environment: update.environment, publicUrl: update.publicUrl }),
     // Upload reads this to tag the commit a production release was packaged from.
     ...packaged === undefined ? {} : { commit: packaged.commit, dirty: packaged.dirty },
   }, null, 2)}\n`)
@@ -178,6 +187,9 @@ export function resolveDesktopPackageTarget(
   const target = TARGETS[name]
   if (target.platform === 'win32' && (hostPlatform !== 'win32' || hostArch !== 'x64')) {
     throw new Error('desktop package: win-x64 requires a Windows x64 build host')
+  }
+  if (target.platform === 'linux' && hostPlatform !== 'linux') {
+    throw new Error(`desktop package: ${name} requires a Linux build host`)
   }
   if (target.platform === 'darwin' && hostPlatform !== 'darwin') {
     throw new Error(`desktop package: ${name} requires a macOS build host`)
@@ -332,7 +344,7 @@ async function main(): Promise<void> {
   const invocation = parseDesktopPackageInvocation(process.argv.slice(2))
   const { target } = invocation
   const environment = target.platform === 'darwin' && invocation.unsigned
-    ? localMacOSPackageEnvironment()
+    ? localUnsignedPackageEnvironment()
     : loadDesktopPackageEnvironment(target.platform)
   const productVersion = packageVersion(join(APP_ROOT, 'package.json'), 'desktop package')
   // Release settings come from the target dotenv file alone, so the version this run publishes is an

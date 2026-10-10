@@ -2,10 +2,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { loadDesktopPackageEnvironment, localMacOSPackageEnvironment, validateDesktopPackageEnvironment } from '../scripts/desktop-package-environment.mjs'
+import { loadDesktopPackageEnvironment, localUnsignedPackageEnvironment, validateDesktopPackageEnvironment } from '../scripts/desktop-package-environment.mjs'
 import { resolveWindowsPackageSettings } from '../scripts/windows-package-settings.mjs'
 
 const WINDOWS = { platform: 'win32', arch: 'x64' } as const
+const LINUX = { platform: 'linux', arch: 'x64' } as const
 const MACOS = { platform: 'darwin', arch: 'arm64' } as const
 const POLICY = { DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN: 'https://policy.example.com',
   DSH_DESKTOP_MANDATORY_UPDATE_CONFIG: JSON.stringify({ allowedAuthOrigins: ['https://login.example.com'] }) }
@@ -32,7 +33,7 @@ describe('Desktop local packaging configuration', () => {
       DSH_DESKTOP_MACOS_SIGNING_IDENTITY: 'Release identity', CSC_LINK: 'missing.p12',
       APPLE_API_KEY: 'missing.p8', DOWNLOAD_PROD_COS_SECRET_KEY: 'unused-secret',
     }
-    const local = localMacOSPackageEnvironment(parent)
+    const local = localUnsignedPackageEnvironment(parent)
     expect(local).toEqual({
       PATH: parent.PATH, HTTPS_PROXY: parent.HTTPS_PROXY, DSH_DESKTOP_NPM_REGISTRY: parent.DSH_DESKTOP_NPM_REGISTRY,
       DSH_DESKTOP_APP_ID: 'com.deepseek.harness', DSH_DESKTOP_UNSIGNED: '1',
@@ -40,6 +41,19 @@ describe('Desktop local packaging configuration', () => {
     expect(() => { validateDesktopPackageEnvironment(local, MACOS, { unsigned: true }) }).not.toThrow()
     expect(parent.DSH_DESKTOP_UNSIGNED).toBe('0')
     expect(parent.DSH_DESKTOP_APP_ID).toBe('com.example.release')
+  })
+
+  it('needs no local release settings file for the unsigned linux target', async () => {
+    await withDirectory(async (directory) => {
+      const parent = {
+        PATH: '/bin', DSH_DESKTOP_AUTO_UPDATE_ENV: 'production', DSH_DESKTOP_MANDATORY_UPDATE_CONFIG: 'invalid-json',
+        DOWNLOAD_PROD_COS_SECRET_KEY: 'unused-secret',
+      }
+      expect(loadDesktopPackageEnvironment('linux', parent, directory)).toEqual({
+        PATH: '/bin', DSH_DESKTOP_APP_ID: 'com.deepseek.harness', DSH_DESKTOP_UNSIGNED: '1',
+      })
+      expect(() => { validateDesktopPackageEnvironment({ ...RELEASE }, LINUX, {}) }).not.toThrow()
+    })
   })
 
   it('takes cache concurrency from the Windows file and defaults to four without ambient overrides', async () => {
@@ -159,7 +173,7 @@ describe('Desktop local packaging configuration', () => {
   })
 
   it('accepts unsigned macOS configuration without Apple or update policy settings while keeping release validation', () => {
-    const local = localMacOSPackageEnvironment({})
+    const local = localUnsignedPackageEnvironment({})
     expect(() => { validateDesktopPackageEnvironment(local, MACOS, { unsigned: true }) }).not.toThrow()
     expect(() => { validateDesktopPackageEnvironment(local, MACOS) })
       .toThrow('DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN')
