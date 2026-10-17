@@ -11,6 +11,7 @@ export type DesktopAutoUpdateTarget = 'mac-arm64' | 'mac-x64' | 'win-x64'
 /** Public updater URL and object prefixes for one release target. */
 export interface DesktopAutoUpdateConfig {
   readonly environment: DesktopAutoUpdateEnvironment
+  readonly channel: 'nightly' | 'latest'
   readonly target: DesktopAutoUpdateTarget
   readonly origin: string
   readonly publicUrl: string
@@ -61,6 +62,7 @@ export function desktopBuildRecordFilename(target: DesktopBuildTarget): string
 export function desktopUpdateMetadataFilename(
   version: string,
   platform: NodeJS.Platform,
+  channel?: 'nightly' | 'latest',
 ): string
 
 /**
@@ -90,3 +92,10 @@ export function resolveDesktopUploadConfig(
   platform: NodeJS.Platform,
   arch: string,
 ): DesktopUploadConfig
+
+/**
+ * Resolve the packaged update channel, defaulting omitted local settings to nightly.
+ * @param env Packaging settings.
+ * @returns Validated channel.
+ */
+export function resolveDesktopUpdateChannel(env: NodeJS.ProcessEnv): 'nightly' | 'latest'
