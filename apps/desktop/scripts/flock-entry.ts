@@ -76,8 +76,12 @@ async function buildNativeSystem(): Promise<void> {
   if (pnpmEntry === undefined || pnpmEntry === '') {
     throw new Error(`desktop package: flock addon is not built; run ${BUILD_COMMAND_TEXT} or invoke this script through a pnpm package command`)
   }
+  // npm_execpath may be pnpm's native ELF binary (binary distribution) —
+  // run JS entries through node, native entries directly (execve).
+  const runsThroughNode = /\.(?:c|m)?js$/iu.test(pnpmEntry)
+  const command = runsThroughNode ? process.execPath : pnpmEntry
   for (const args of BUILD_COMMANDS) {
-    const child = spawn(process.execPath, [pnpmEntry, ...args], { cwd: REPOSITORY_ROOT, stdio: 'inherit' })
+    const child = spawn(command, runsThroughNode ? [pnpmEntry, ...args] : args, { cwd: REPOSITORY_ROOT, stdio: 'inherit' })
     const [code, signal] = await once(child, 'close') as [number | null, NodeJS.Signals | null]
     if (code !== 0) throw new Error(`desktop package: pnpm ${args.join(' ')} exited with ${String(code ?? signal)}`)
   }

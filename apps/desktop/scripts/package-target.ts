@@ -308,9 +308,16 @@ function runPnpm(
   if (pnpmEntry === undefined || pnpmEntry === '') {
     throw new Error('desktop package: invoke this script through a pnpm package command')
   }
-  if (run !== undefined) return run.run(args.join(' '), process.execPath, [pnpmEntry, ...args], { cwd, env })
+  // npm_execpath is pnpm's own entry: a JavaScript file under a JS install,
+  // but a native ELF binary under pnpm's binary distribution (12.15.0) —
+  // `node <ELF>` aborts with a parse error. Run JS entries through node and
+  // native entries directly (execve).
+  const runsThroughNode = /\.(?:c|m)?js$/iu.test(pnpmEntry)
+  const command = runsThroughNode ? process.execPath : pnpmEntry
+  const commandArgs = runsThroughNode ? [pnpmEntry, ...args] : args
+  if (run !== undefined) return run.run(args.join(' '), command, commandArgs, { cwd, env })
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(process.execPath, [pnpmEntry, ...args], {
+    const child = spawn(command, commandArgs, {
       cwd,
       env,
       stdio: 'inherit',
