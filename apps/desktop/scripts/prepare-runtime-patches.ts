@@ -51,8 +51,15 @@ export function prepareRuntimePatches(
   const source = yaml.load(readFileSync(join(repositoryRoot, 'pnpm-workspace.yaml'), 'utf8')) as {
     patchedDependencies: Record<string, string>
   }
-  const sourceLock = yaml.load(readFileSync(join(repositoryRoot, 'pnpm-lock.yaml'), 'utf8')) as {
-    patchedDependencies: Record<string, string>
+  // The pnpm 12 lockfile is a multi-document stream (the packageManager pin
+  // lives in its own document); pick the document that actually records the
+  // workspace patches instead of failing on the stream shape.
+  const sourceLockDocs = yaml.loadAll(
+    readFileSync(join(repositoryRoot, 'pnpm-lock.yaml'), 'utf8'),
+  ) as Array<{ patchedDependencies?: Record<string, string> } | null>
+  const sourceLockDoc = sourceLockDocs.find(doc => doc !== null && Object.hasOwn(doc, 'patchedDependencies'))
+  const sourceLock: { patchedDependencies: Record<string, string> } = {
+    patchedDependencies: sourceLockDoc?.patchedDependencies ?? {},
   }
   for (const spec of Object.keys(source.patchedDependencies)) {
     if (!Object.hasOwn(policy, spec)) throw new Error(`desktop patches: classify the workspace patch ${spec}`)

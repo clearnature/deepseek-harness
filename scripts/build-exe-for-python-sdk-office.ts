@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { downloadRuntimeNpmPackage, type RuntimeNpmArchive } from './primary-runtime/prepare.ts'
-import { load as parseYaml } from 'js-yaml'
+import { loadAll as parseYamlDocuments } from 'js-yaml'
 import { officePackageDirectories } from './libreoffice-packages.mjs'
 
 /** pkg applies these exclusions to dependency `files` as well as root asset globs. */
@@ -25,8 +25,12 @@ export interface OfficePackageArchive extends RuntimeNpmArchive {
  * @returns Locked npm tarball identity; rejects versions without SHA-512 integrity.
  */
 export async function runtimeNpmArchive(name: string, version: string, lockfile = join(import.meta.dirname, '../pnpm-lock.yaml')): Promise<RuntimeNpmArchive> {
-  const lock = parseYaml(await readFile(lockfile, 'utf8')) as { packages?: Record<string, { resolution?: { integrity?: string } }> }
-  const integrity = lock.packages?.[`${name}@${version}`]?.resolution?.integrity
+  // The pnpm 12 lockfile is a multi-document stream; the packages map lives
+  // in the first document that records this exact package.
+  const key = `${name}@${version}`
+  const lock = (parseYamlDocuments(await readFile(lockfile, 'utf8')) as Array<{ packages?: Record<string, { resolution?: { integrity?: string } }> } | null>)
+    .find(doc => doc?.packages?.[key] !== undefined)
+  const integrity = lock?.packages?.[key]?.resolution?.integrity
   if (typeof integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(integrity)) {
     throw new Error(`runtime npm lock: missing SHA-512 integrity for ${name}@${version}`)
   }
