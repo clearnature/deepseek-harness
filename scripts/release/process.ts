@@ -105,17 +105,22 @@ export function isEntry(moduleUrl: string): boolean {
 /**
  * Resolve pnpm as a command prefix that spawns without a shell. On Windows the
  * `pnpm` shim is a `.cmd` batch file, which `spawnSync` refuses to run unless a
- * shell interprets it, so the prefix runs pnpm's JavaScript entry with the
- * current Node instead: the entry that launched this script when a run-script
- * did, or the workspace's own pnpm dependency otherwise. pnpm's manifest does
- * not export its bin entry, so the dependency is located on disk rather than
- * through module resolution.
+ * shell interprets it, so the prefix runs pnpm's entry directly: the entry that
+ * launched this script when a run-script did, through the current Node for a
+ * JavaScript distribution and as an executable for a native one, or the
+ * workspace's own pnpm dependency otherwise. pnpm's manifest does not export
+ * its bin entry, so the dependency is located on disk rather than through
+ * module resolution.
  * @returns Command and leading arguments to prepend before pnpm's arguments.
  */
 export function pnpmCommand(): readonly [command: string, ...args: string[]] {
   const execpath = process.env.npm_execpath
   // `npm run` and `yarn run` set this too, and handing pnpm's arguments to either would write a different lockfile.
-  if (execpath !== undefined && /[\\/]pnpm[\\/]/u.test(execpath) && /\.[cm]?js$/u.test(execpath)) return [process.execPath, execpath]
+  if (execpath !== undefined && /[\\/]pnpm[\\/]/u.test(execpath)) {
+    // pnpm's JavaScript distribution runs through this Node; its native distribution
+    // (a `pnpm-native` image) is an executable to spawn directly, and `node <image>` aborts.
+    return /\.[cm]?js$/u.test(execpath) ? [process.execPath, execpath] : [execpath]
+  }
   for (let directory = dirname(fileURLToPath(import.meta.url)); ; directory = dirname(directory)) {
     const entry = join(directory, 'node_modules', 'pnpm', 'bin', 'pnpm.cjs')
     if (existsSync(entry)) return [process.execPath, entry]
