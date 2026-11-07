@@ -26,6 +26,7 @@ export function resolveDesktopPurgeConfig(
   env: NodeJS.ProcessEnv, target: DesktopPackageTargetName, publicUrl?: string,
 ): DesktopPurgeConfig {
   if (resolveDesktopAutoUpdateEnvironment(env) !== 'production') throw new DesktopPurgeError('desktop purge: production is required')
+  if (target === 'linux-x64') throw new DesktopPurgeError('desktop purge: linux-x64 has no fixed auto-update installer')
   const { platform, arch } = desktopTargetPlatform(target)
   const update = resolveDesktopUploadConfig(env, platform, arch)
   const zoneId = requiredEnvironmentValue(env, 'DOWNLOAD_PROD_EO_ZONE_ID')

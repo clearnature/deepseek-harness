@@ -187,6 +187,10 @@ export async function createDesktopUploadPlan(
   if (target === undefined) {
     throw new Error(`desktop upload: unsupported target ${String(targetName)}`)
   }
+  if (targetName === 'linux-x64') {
+    // The Linux package is built and installed locally; it has no auto-update feed to upload to.
+    throw new Error('desktop upload: linux-x64 has no auto-update feed')
+  }
   const environment = options.environment ?? process.env
   const repositoryRoot = options.repositoryRoot ?? REPOSITORY_ROOT
   const appRoot = options.appRoot ?? APP_ROOT
