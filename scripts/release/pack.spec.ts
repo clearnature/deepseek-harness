@@ -16,7 +16,7 @@ import { packedIdentity, PUBLISH_ORDER_FILE, readPublishOrder } from './tarball.
 const require = createRequire(import.meta.url)
 const packScript = resolve(import.meta.dirname, 'pack.ts')
 const tsxHook = pathToFileURL(require.resolve('tsx/esm')).href
-const pnpmEntry = join(dirname(require.resolve('pnpm')), 'bin/pnpm.cjs')
+const pnpmEntry = require.resolve('pnpm/bin/pnpm.mjs')
 const roots: string[] = []
 const commit = 'abcdef0'
 

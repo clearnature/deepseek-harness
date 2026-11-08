@@ -13,7 +13,7 @@ import { removeFixtureSafely } from '../../../scripts/test-fixture-cleanup.ts'
 import { packedIdentity, PUBLISH_ORDER_FILE } from '../../../scripts/release/tarball.ts'
 
 const require = createRequire(import.meta.url)
-const pnpmEntry = join(dirname(require.resolve('pnpm')), 'bin/pnpm.cjs')
+const pnpmEntry = require.resolve('pnpm/bin/pnpm.mjs')
 const tsxHook = pathToFileURL(require.resolve('tsx/esm')).href
 const roots: string[] = []
 const metadata = { DSH_CLIENT_COMMIT_HASH: 'abcdef0', DSH_CLIENT_VERSION: '1.2.3' }

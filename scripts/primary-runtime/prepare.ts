@@ -150,6 +150,32 @@ export async function unpackPrimaryRuntimeWheel(archive: string, destination: st
 }
 
 /**
+ * Copy the platform package that carries pnpm's native binary beside its wrapper.
+ * pnpm 12 splits the binary into `@pnpm/exe.<platform>-<arch>`, an optional dependency the
+ * package store keeps outside the wrapper directory, so copying the wrapper alone ships a
+ * runtime whose `bin/pnpm.mjs` cannot start. pnpm 11 bundles its binary under `dist/` and
+ * declares no such dependency; there the lookup fails and the copy is skipped.
+ * @param wrapper - Installed pnpm wrapper directory.
+ * @param destination - Wrapper copy inside the prepared payload.
+ * @param platform - Target Node.js platform.
+ * @param arch - Target Node.js architecture.
+ * @returns Resolves after the platform package is copied.
+ * @throws When the wrapper declares the platform package but it is not installed.
+ */
+async function copyPnpmNativePackage(wrapper: string, destination: string, platform: NodeJS.Platform, arch: string): Promise<void> {
+  const { optionalDependencies } = JSON.parse(readFileSync(join(wrapper, 'package.json'), 'utf8')) as { optionalDependencies?: Record<string, string> }
+  const name = `@pnpm/exe.${platform}-${arch}`
+  if (optionalDependencies?.[name] === undefined) return
+  let manifest: string
+  try {
+    manifest = createRequire(import.meta.url).resolve(`${name}/package.json`, { paths: [wrapper] })
+  } catch (error) {
+    throw new Error(`primary runtime: pnpm ${basename(wrapper)} declares ${name} but it is not installed`, { cause: error })
+  }
+  await cp(dirname(manifest), join(destination, 'node_modules', '@pnpm', `exe.${platform}-${arch}`), { recursive: true, dereference: true })
+}
+
+/**
  * Remove packages bundled directly under pnpm's dist/node_modules whose npm `os`/`cpu` fields exclude the target.
  * The pnpm tarball carries every platform's optional native packages, such as `@reflink/reflink-darwin-x64`.
  * Nested node_modules and the `libc` field are not inspected; pnpm 11 bundles neither nested native packages nor Linux variants.
@@ -231,9 +257,11 @@ export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOption
         pnpmVersion = options.pnpmArchive.version
         await downloadRuntimeNpmPackage(options.pnpmArchive, join(dependencies, 'pnpm'), paths.downloads)
       } else {
-        const pnpmManifest = createRequire(import.meta.url).resolve('pnpm')
-        pnpmVersion = (JSON.parse(readFileSync(pnpmManifest, 'utf8')) as { version: string }).version
-        await cp(dirname(pnpmManifest), join(dependencies, 'pnpm'), { recursive: true, dereference: true })
+        const wrapper = dirname(createRequire(import.meta.url).resolve('pnpm/package.json'))
+        pnpmVersion = (JSON.parse(readFileSync(join(wrapper, 'package.json'), 'utf8')) as { version: string }).version
+        const destination = join(dependencies, 'pnpm')
+        await cp(wrapper, destination, { recursive: true, dereference: true })
+        await copyPnpmNativePackage(wrapper, destination, platform, arch)
       }
       prunePnpmForeignNativePackages(join(dependencies, 'pnpm'), platform, arch)
     }
