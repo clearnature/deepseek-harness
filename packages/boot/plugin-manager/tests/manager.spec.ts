@@ -1,5 +1,5 @@
 /** Persistent manager behavior through a real profile Include and Loader. */
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import { once } from 'node:events'
 import { createServer } from 'node:http'
@@ -332,7 +332,14 @@ it.each(['github:acme/connected', 'https://github.com/acme/connected.git', 'git+
     const address = proxy.address()
     if (address === null || typeof address === 'string') throw new Error('proxy did not bind a TCP port')
     const proxyUrl = `http://127.0.0.1:${String(address.port)}`
-    writeFileSync(env.GIT_CONFIG_GLOBAL, `[url "${pathToFileURL(repository).href}"]\n insteadOf = ssh://git@github.com/acme/connected.git\n insteadOf = git@github.com:acme/connected.git\n[url "${proxyUrl}/"]\n insteadOf = https://github.com/\n[http]\n proxy =\n`)
+    // pnpm records and probes a Git spec as HTTPS, and Git applies one URL rewrite per address, so the SSH transport
+    // is served locally instead of adding a second rewrite from the SSH URL to this repository.
+    const sshCommand = join(dir, 'git-ssh.sh')
+    const sshLog = join(dir, 'git-ssh.log')
+    writeFileSync(sshLog, '')
+    writeFileSync(sshCommand, `#!/bin/sh\nprintf '%s\\n' "$@" >> '${sshLog}'\nexec git-upload-pack '${repository}'\n`)
+    chmodSync(sshCommand, 0o755)
+    writeFileSync(env.GIT_CONFIG_GLOBAL, `[url "${proxyUrl}/"]\n insteadOf = https://github.com/\n[core]\n sshCommand = ${sshCommand}\n[http]\n proxy =\n`)
     // pnpm probes HTTPS with Node before falling back to SSH, even for an SSH spec.
     // Route that HTTP request to our proxy too; Git's URL rewrite alone cannot isolate it.
     const manifest = readProfileManifest('test', dir)
@@ -343,7 +350,9 @@ it.each(['github:acme/connected', 'https://github.com/acme/connected.git', 'git+
     expect(result.error).toBeUndefined()
     expect(result).toMatchObject({ changed: true, bundle: name, packageResult: { exitCode: 0 } })
     expect(readProfileManifest('test', dir).dependencies).toHaveProperty(name)
-    expect(requests).toContain('github.com:443')
+    // The HTTPS route was refused through the proxy, and the repository arrived over the SSH transport instead.
+    expect(requests.some(url => url.endsWith(':443'))).toBe(true)
+    expect(readFileSync(sshLog, 'utf8')).toContain('github.com')
   },
 )
 

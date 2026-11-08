@@ -11,8 +11,8 @@ const UNDECIDED_BUILD = 'set this to true or false'
 /** Where a non-interactive run names the build scripts it skipped. */
 const IGNORED_BUILDS = /\bIgnored build scripts: (.+)/
 
-/** The `allowBuilds` key pnpm suggests when it refuses to prepare a git-hosted package; a subdirectory key can contain spaces. */
-const GIT_DEP_PREPARE = /ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED[\s\S]*?^allowBuilds:\r?\n[ \t]+(.+?): true$/m
+/** The suggested `allowBuilds` entry pnpm prints when it refuses to prepare a git-hosted package; a subdirectory key can contain spaces. */
+const GIT_DEP_PREPARE = /ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED[\s\S]*?^[ \t]*allowBuilds:\r?\n((?:[ \t]+\S.*\r?\n)+)/m
 
 /**
  * Whether an `allowBuilds` key names a git URL that carries a credential: a password, or any user name over HTTP(S).
@@ -77,7 +77,9 @@ export async function recordPendingBuilds(dir: string, output: string): Promise<
  */
 export function blockedBuildNames(output: string): string[] {
   const ignored = IGNORED_BUILDS.exec(output)?.[1]?.split(',') ?? []
-  const git = GIT_DEP_PREPARE.exec(output)?.[1]
+  // pnpm wraps its suggested entry to the terminal width, splitting a long key across indented lines.
+  const suggestion = GIT_DEP_PREPARE.exec(output)?.[1]
+  const git = suggestion === undefined ? undefined : /^(.+?): true/u.exec(suggestion.split(/\r?\n/u).map(line => line.trim()).join(''))?.[1]
   return [...ignored, ...git === undefined ? [] : [git]]
     .map(name => name.trim()).filter(name => name !== '' && !/[*?]/.test(name) && !carriesCredential(name))
 }

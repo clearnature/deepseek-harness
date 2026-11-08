@@ -14,6 +14,40 @@ export interface GitTransportOptions {
 
 /** An HTTP(S) Git URL with an optional `git+` prefix, which pnpm clones over that transport as written. */
 const HTTP_GIT_URL = /^(?:git\+)?https?:\/\//i
+/** An SSH Git URL with an optional `git+` prefix, which pnpm records as HTTPS. */
+const SSH_GIT_URL = /^(?:git\+)?ssh:\/\//i
+
+/**
+ * The HTTPS address pnpm records for a Git spec: an HTTP(S) URL as written, the HTTPS form of an SSH URL, or the
+ * HTTPS form of a hosted shorthand such as `github:owner/repo`.
+ * @param spec The parsed installation address.
+ * @returns The HTTPS URL, or `undefined` for a spec without one, or whose URL carries credentials or a query.
+ */
+function httpsForm(spec: ParsedInstallSpec): URL | undefined {
+  if (spec.kind !== 'git') return undefined
+  const hosted = hostedGitInfo.fromUrl(spec.spec)
+  const hostedHttps = hosted === undefined ? undefined : hosted.https({ noGitPlus: true, noCommittish: true })
+  const raw = hostedHttps
+    ?? (HTTP_GIT_URL.test(spec.spec) ? spec.spec.replace(/^git\+/i, '') : undefined)
+    ?? (SSH_GIT_URL.test(spec.spec) ? spec.spec.replace(/^git\+/i, '').replace(/^ssh:\/\/git@/i, 'https://') : undefined)
+  if (raw === undefined) return undefined
+  const url = new URL(raw)
+  if (url.username !== '' || url.password !== '' || url.search !== '') return undefined
+  return url
+}
+
+/**
+ * The SSH form of a Git spec, whatever its host and however it is written.
+ * @param spec The parsed installation address.
+ * @returns `git+ssh://git@<host>/<path>` with the spec's fragment, or `undefined` for a spec without an HTTPS form.
+ */
+function sshForm(spec: ParsedInstallSpec): string | undefined {
+  const url = httpsForm(spec)
+  if (url === undefined) return undefined
+  // The fragment is copied as written: WHATWG serialization would percent-encode some of its characters.
+  const hash = /#.*$/s.exec(spec.spec)?.[0] ?? ''
+  return `git+ssh://git@${url.hostname}${url.pathname}${hash}`
+}
 
 /**
  * The SSH form of an HTTP(S) Git spec on a host pnpm has no transport fallback for. pnpm tries HTTPS and SSH itself
@@ -25,11 +59,32 @@ const HTTP_GIT_URL = /^(?:git\+)?https?:\/\//i
  */
 export function sshGitSpec(spec: ParsedInstallSpec): string | undefined {
   if (spec.kind !== 'git' || !HTTP_GIT_URL.test(spec.spec) || hostedGitInfo.fromUrl(spec.spec) !== undefined) return undefined
-  const url = new URL(spec.spec.replace(/^git\+/i, ''))
-  if (url.username !== '' || url.password !== '' || url.search !== '') return undefined
-  // The fragment is copied as written: WHATWG serialization would percent-encode some of its characters.
-  const hash = /#.*$/s.exec(spec.spec)?.[0] ?? ''
-  return `git+ssh://git@${url.hostname}${url.pathname}${hash}`
+  return sshForm(spec)
+}
+
+/**
+ * Git configuration that makes one pnpm run clone an HTTPS-recorded Git spec over SSH.
+ *
+ * pnpm 12 resolves every Git spec over HTTPS and records that URL, because it has to work on every machine that
+ * installs the lockfile, and it no longer retries SSH after HTTPS fails. A repository only SSH can read therefore
+ * needs this rewrite on the install run itself: Git applies it while pnpm resolves, and the recorded URL stays HTTPS.
+ * Git applies one rewrite per URL, so the mapping names the exact address pnpm resolves, with or without `.git`.
+ * @param spec The parsed installation address.
+ * @returns Environment entries for one pnpm run, or `undefined` for a spec without an HTTPS form.
+ */
+export function sshTransportEnv(spec: ParsedInstallSpec): Readonly<Record<string, string>> | undefined {
+  const https = httpsForm(spec)
+  const ssh = sshForm(spec)
+  if (https === undefined || ssh === undefined) return undefined
+  const recorded = https.href
+  const prefixes = recorded.endsWith('.git') ? [recorded, recorded.slice(0, -'.git'.length)] : [recorded]
+  const env: Record<string, string> = { GIT_CONFIG_COUNT: String(prefixes.length) }
+  const target = ssh.replace(/^git\+/u, '')
+  prefixes.forEach((prefix, index) => {
+    env[`GIT_CONFIG_KEY_${String(index)}`] = `url.${target}.insteadOf`
+    env[`GIT_CONFIG_VALUE_${String(index)}`] = prefix
+  })
+  return env
 }
 
 /**
@@ -52,6 +107,23 @@ async function readable(repository: string, dir: string, options: GitTransportOp
     timeout: options.timeoutMs, cancelSignal: options.signal, killDescendants: true, killSignal: 'SIGKILL',
   })
   return !result.failed
+}
+
+/**
+ * Probe the SSH form of a Git spec after pnpm could not resolve it, and produce the run-scoped rewrite that sends an
+ * HTTPS-recorded repository over SSH without changing the URL pnpm records.
+ * @param spec The parsed installation address.
+ * @param dir The profile directory where installation runs.
+ * @param options The probe deadline, cancellation and the installer's environment.
+ * @returns Environment entries for one install run, or `undefined` when the spec has no SSH form or SSH cannot read it.
+ */
+export async function chooseSshTransport(
+  spec: ParsedInstallSpec, dir: string, options: GitTransportOptions,
+): Promise<Readonly<Record<string, string>> | undefined> {
+  const ssh = sshForm(spec)
+  if (ssh === undefined || options.signal.aborted) return undefined
+  if (!await readable(ssh.replace(/^git\+/i, '').replace(/#.*$/s, ''), dir, options)) return undefined
+  return sshTransportEnv(spec)
 }
 
 /**

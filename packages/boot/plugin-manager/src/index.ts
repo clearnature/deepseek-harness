@@ -37,7 +37,7 @@ import { flatten, writePluginEnabled } from './patch.ts'
 import { incompatiblePlugin, ManagementFailure } from './failure.ts'
 import { approveBuilds, recordPendingBuilds } from './build-approval.ts'
 import { checkGithubConnection, type GithubConnectionFailure } from './github-connection.ts'
-import { chooseGitTransport, sshGitSpec } from './git-transport.ts'
+import { chooseGitTransport, chooseSshTransport, sshGitSpec } from './git-transport.ts'
 import { newerVersions, VERSION_FIELDS, VERSION_LIST_FIELDS, versionFacts } from './versions.ts'
 import type {
   BundleDetail, BundleInfo, BundleRowInfo, ChangeResult, InspectOptions, InstallBundleOptions, ListVersionsOptions, ManagementError,
@@ -931,6 +931,7 @@ export class PluginManager extends TypertRemoteService {
         // The last run is the result's; the registries asked stay listed whatever the outcome.
         const plan = registryPlan(options?.registry, await this.registries())
         let run: PackageResult | undefined
+        let sshRewrite: Promise<Readonly<Record<string, string>> | undefined> | undefined
         let used: Registry = null
         for (const [index, registry] of plan.entries()) {
           if (index > 0) await this.restoreFiles(files)
@@ -939,7 +940,21 @@ export class PluginManager extends TypertRemoteService {
           result.registries.push(registry)
           used = registry
           announce('installing', { registry, index: index + 1, total: plan.length })
-          run = await this.runPnpm(['add', installSpec, ...options?.saveExact === true ? ['--save-exact'] : [], ...registryArguments(registry)], control.abort.signal, requestId)
+          const args = ['add', installSpec, ...options?.saveExact === true ? ['--save-exact'] : [], ...registryArguments(registry)]
+          run = await this.runPnpm(args, control.abort.signal, requestId)
+          if (run.exitCode !== 0 && run.timedOut !== true && sshRewrite === undefined && parsed.kind === 'git') {
+            // pnpm records a Git spec as HTTPS and does not retry SSH itself, so a repository that only SSH reads
+            // needs the transport rewritten for this run rather than in the user's Git configuration.
+            sshRewrite = chooseSshTransport(
+              parsed, this.profile.dir,
+              { timeoutMs: this.gitTransportTimeoutMs, signal: control.abort.signal, ...env },
+            )
+            this.packageOperations.add(sshRewrite)
+            let rewrite: Readonly<Record<string, string>> | undefined
+            try { rewrite = await sshRewrite }
+            finally { this.packageOperations.delete(sshRewrite) }
+            if (rewrite !== undefined && !stopped()) run = await this.runPnpm(args, control.abort.signal, requestId, rewrite)
+          }
           result.packageResult = run
           if (stopped()) throw new InstallCancelledError()
           // A compatibility refusal is the package's own answer, so no other registry is asked.
@@ -1114,6 +1129,7 @@ export class PluginManager extends TypertRemoteService {
   /** Run one pnpm command in the profile, streaming its output as install-log chunks. */
   private async runPnpm(
     args: readonly string[], signal?: AbortSignal, requestId?: PluginInstallRequestId,
+    env?: Readonly<Record<string, string>>,
   ): Promise<PackageResult> {
     const jobId = randomUUID()
     const argv = ['pnpm', ...args]
@@ -1121,6 +1137,7 @@ export class PluginManager extends TypertRemoteService {
     const identity = requestId === undefined ? {} : { requestId }
     const task = runProfilePnpm({ ...this.profile, profile: this.profile.name }, args, {
       execution: 'service', ...this.profile.packageManager ?? { command: this.pnpmCommand },
+      ...env === undefined ? {} : { env: { ...this.profile.packageManager?.env, ...env } },
       signal: signal === undefined ? this.abort.signal : AbortSignal.any([this.abort.signal, signal]),
       outputBytes: this.outputBytes, activateNewBundles: false, idleTimeoutMs: this.idleTimeoutMs,
       lookupTimeoutMs: this.inspectTimeoutMs,
