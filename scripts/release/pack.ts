@@ -49,22 +49,42 @@ async function packMembers(
   if (concurrency === 1) {
     const order: string[] = []
     for (const member of members) {
-      const invocation = pnpmInvocation(['--dir', member.directory, 'pack', '--pack-destination', destination])
-      await runConcurrent(invocation.command, invocation.args)
+      await packMember(member, destination)
       order.push(validatePackedMember(family, member, destination))
     }
     return order
   }
   if (members.length === 0) return []
-  const invocation = pnpmInvocation([
-    'pack',
-    '--recursive',
-    `--workspace-concurrency=${String(concurrency)}`,
-    ...members.map(member => `--filter=${member.name}`),
-    '--pack-destination', destination,
-  ])
+  // Each member packs in its own process: pnpm 12 runs the lifecycle scripts of one recursive pack in sequence, so
+  // its `--workspace-concurrency` no longer overlaps them.
+  const validated = new Array<string>(members.length)
+  let next = 0
+  const work = async (): Promise<void> => {
+    while (next < members.length) {
+      const index = next
+      next += 1
+      const member = members[index]
+      /* v8 ignore next -- the loop condition bounds the index */
+      if (member === undefined) continue
+      await packMember(member, destination)
+      validated[index] = validatePackedMember(family, member, destination)
+    }
+  }
+  const workers: Promise<void>[] = []
+  for (let started = 0; started < Math.min(concurrency, members.length); started += 1) workers.push(work())
+  await Promise.all(workers)
+  return validated
+}
+
+/**
+ * Pack one member into the staging directory.
+ * @param member - The release member to pack.
+ * @param destination - Absolute staging directory owned by this packing invocation.
+ * @returns Resolves after pnpm exits successfully.
+ */
+async function packMember(member: ReleaseMember, destination: string): Promise<void> {
+  const invocation = pnpmInvocation(['--dir', member.directory, 'pack', '--pack-destination', destination])
   await runConcurrent(invocation.command, invocation.args)
-  return members.map(member => validatePackedMember(family, member, destination))
 }
 
 /**

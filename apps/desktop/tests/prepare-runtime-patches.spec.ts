@@ -139,9 +139,10 @@ it.each([false, true])('pnpm applies runtime-only bytes and rejects an inapplica
     '--config.manage-package-manager-versions=false'], { cwd: project, env: { ...env, CI: 'true' }, timeout: 30_000, windowsHide: true })
   if (invalid) {
     const failure: unknown = await install.catch((error: unknown) => error)
-    if (!(failure instanceof Error) || !('stdout' in failure)) throw new Error('Expected a captured pnpm failure')
+    if (!(failure instanceof Error) || !('stdout' in failure) || !('stderr' in failure)) throw new Error('Expected a captured pnpm failure')
     expect(failure).toHaveProperty('code', 1)
-    expect(failure.stdout).toMatch(/PATCH_FAILED/u)
+    // pnpm 12 reports an inapplicable patch on stderr; the code must reach the operator on either stream.
+    expect(`${String(failure.stdout)}${String(failure.stderr)}`).toMatch(/PATCH_FAILED/u)
   } else {
     await install
     verifyRuntimePatches(project, plan)
