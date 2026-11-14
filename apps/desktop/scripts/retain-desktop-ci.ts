@@ -34,6 +34,8 @@ export function desktopReleasesRoot(env: NodeJS.ProcessEnv): string {
  */
 export function resolveDesktopRetentionRunner(env: NodeJS.ProcessEnv): string {
   const target = resolveDesktopBuildTarget(env)
+  // The archival routes cover the published platforms; Linux packages are built locally and never retained.
+  if (target === 'linux-x64') throw new Error('desktop retention: linux-x64 has no CI retention flow')
   const routes = desktopPublishRunnersSchema.parse(JSON.parse(required(env, 'DESKTOP_PUBLISH_RUNNERS')))
   const route = routes[required(env, 'RUNNER_NAME')]
   if (!route || !route.target.includes(target)

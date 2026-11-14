@@ -60,7 +60,8 @@ export async function desktopPublicationSummary(
     row('升级 YAML', `${feeds.map(file => link(url(file.key))).join('<br>')}<br>本次发布将更新此文件；审批前可能不存在或仍指向旧版本。`),
     row('打包来源', `${link(runUrl, `查看打包运行 #${source.runId} · 第 ${source.attempt} 次尝试`)}<br>源码：${code(`${source.sourceRef} @ ${source.commit}`)}<br>打包机器：${code(source.runnerName)}`),
     row('签名与公证', plan.target === 'win-x64' ? 'EXE 签名校验通过' : 'DMG 校验通过<br>ZIP 内应用校验通过'),
-    ...(uploadWebsite && plan.environment === 'production' ? [row('官网固定安装包',
+    // The website carries a fixed installer for macOS and Windows only; Linux packages are built locally.
+    ...(uploadWebsite && plan.environment === 'production' && plan.target !== 'linux-x64' ? [row('官网固定安装包',
       `${link(desktopWebsiteInstallerUrl(plan.target))}<br>替换为版本 ${code(plan.version)}；已有安装包会被替换，无防降级保护；官网上传与刷新在后续 job 中执行，可能需另行审批。`)] : []),
     row('Git tag', tag), '', '### 批准后将执行', '',
     '1. 重新校验产物与发布目标；若与审批摘要不一致则停止。',
