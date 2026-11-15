@@ -31,6 +31,10 @@ peerDependencyRules:
 allowBuilds:
   esbuild: true
   lefthook: true
+  # The workspace's own pnpm devDependency installs its native binary through
+  # install.js; the build gates spawn that entry directly, so an unapproved
+  # script leaves them without one.
+  pnpm: true
   # Cross-platform boundary for the persistent PTY backend, including ConPTY on Windows.
   node-pty: true
   # Pulled in by @earendil-works/pi-ai (optional LLM API backend). pnpm lists
