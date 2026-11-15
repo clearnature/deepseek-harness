@@ -21,3 +21,19 @@ pnpm --filter @deepseek-ai/dsh-desktop run test:updates:channels --record
 需要先构建 workspace 依赖（新检出目录运行 `pnpm run build:artifacts`）。最后一条命令重新构建 Desktop，启动不打开窗口的 Electron，并且只在成功退出后记录当前平台。将 JSON 改动与依赖或适配层改动一起提交。不带 `--record` 可只测试、不改记录。轻量检查只比较版本；版本未变不代表修改后的适配层已经通过验证。
 
 fixture 使用独立临时目录、回环 HTTP 服务和惰性载荷，检查渠道清单文件名、降级拒绝、灰度资格、下载缓存撤销、新 updater 实例拒绝旧缓存，以及 macOS 代理关闭。它不执行安装器，也不访问生产更新源。安装依赖可能需要外网。30 秒看门狗覆盖 Electron 启动、测试和退出；超时或失败不会更新记录。签名安装和应用重启另行验证。
+
+## 记录环境
+
+每条记录都在原生硬件上取得：fixture 会启动锁定版本的 Electron，并读取该平台自己的渠道文件名。它记录的是该机器上 `pnpm install` 解析出的版本，而检查会与已安装版本逐项比对，因此 `package.json` 里的范围写法或陈旧的 `node_modules` 都会让检查失败。
+
+| 要求 | 取值 |
+|---|---|
+| 平台 | Windows x64 或 macOS arm64/x64 —— 本应用打包的目标是 `win-x64`、`mac-arm64`、`mac-x64`，所以在 Windows ARM64 上录出的记录描述的是一个永远不会产出的构建 |
+| 系统 | 能运行锁定版本 Electron 的版本；Windows CI 在 `windows-2025` runner 上验证 |
+| Node.js | 24.x —— `engines.node` 要求 24.9.0 及以上，两个 CI 工作流都把 `PRIMARY_NODE_VERSION` 设为 24 |
+| pnpm | 由仓库 `packageManager` 钉的 12.18.0，通过 corepack 使用，而非全局安装 |
+| Electron | `apps/desktop/package.json` 中的精确版本，由 `exec install-electron` 下载 |
+| 会话 | 能启动图形应用的 OS 用户；Windows 服务会话无法创建 Electron 进程 |
+| 网络 | `pnpm install` 需要包注册源，`install-electron` 需要 Electron 归档；验证本身只用回环 HTTP |
+
+录制只构建 Desktop 并运行 updater fixture。在新锁定的 Electron 版本上打包发布，还需要该平台的 `node-addon-require-builtin` 预构建接受该运行时指纹，这一项不在本次录制覆盖范围内。
