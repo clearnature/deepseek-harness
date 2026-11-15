@@ -32,6 +32,9 @@ mise.toml
 dist-exe/
 /dist/
 apps/desktop/.desktop-build/
+# Build residue kept at the repository root by local packaging runs; anchors here so
+# it never matches a nested path that a package owns deliberately.
+/.desktop-build/
 python/sdk-runtime/src/deepseek_harness_runtime/runtime/
 python/**/__pycache__/
 python/**/.pytest_cache/
