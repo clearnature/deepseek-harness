@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { zipSync } from 'fflate'
 import { expect, it } from 'vitest'
-import { downloadPrimaryRuntimeAsset, primaryRuntimePayloadDigest, prunePnpmForeignNativePackages, smokePrimaryRuntime, unpackPrimaryRuntimeWheel } from './prepare.ts'
+import { downloadPrimaryRuntimeAsset, primaryRuntimePayloadDigest, prunePnpmAliasBins, prunePnpmForeignNativePackages, smokePrimaryRuntime, unpackPrimaryRuntimeWheel } from './prepare.ts'
 import lock from './lock.json' with { type: 'json' }
 
 it('covers every SDK wheel target with the shared interpreter lock', () => {
@@ -183,5 +183,27 @@ it('names the bundled manifest whose platform field is invalid', async () => {
     await mkdir(join(root, 'dist', 'node_modules', 'invalid'), { recursive: true })
     await writeFile(join(root, 'dist', 'node_modules', 'invalid', 'package.json'), JSON.stringify({ os: 'darwin' }))
     expect(() => { prunePnpmForeignNativePackages(root, 'darwin', 'arm64') }).toThrow(/invalid.package\.json: npm platform constraints must be arrays of strings/u)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+it('keeps only the pnpm bin and drops the alias copies the install script hardlinked', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'primary-pnpm-aliases-'))
+  try {
+    const bin = { pnpm: 'pnpm', pn: 'pn', pnpx: 'pnpx', pnx: 'pnx' }
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'pnpm', bin }))
+    for (const name of Object.values(bin)) await writeFile(join(root, name), 'binary')
+    prunePnpmAliasBins(root)
+    expect((await readdir(root)).sort()).toEqual(['package.json', 'pnpm'])
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+it('keeps an alias that the manifest maps onto the pnpm binary itself', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'primary-pnpm-shared-alias-'))
+  try {
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'pnpm', bin: { pnpm: 'dist/pnpm.cjs', pn: 'dist/pnpm.cjs' } }))
+    await mkdir(join(root, 'dist'), { recursive: true })
+    await writeFile(join(root, 'dist', 'pnpm.cjs'), 'script')
+    prunePnpmAliasBins(root)
+    expect(await readFile(join(root, 'dist', 'pnpm.cjs'), 'utf8')).toBe('script')
   } finally { await rm(root, { recursive: true, force: true }) }
 })

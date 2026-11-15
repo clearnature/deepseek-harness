@@ -126,7 +126,7 @@ export function primaryRuntimePayloadDigest(
   // Identity preserves key order within the selected target, wheel records and distribution map, plus wheel-entry order.
   // Bump format when extraction or assembly changes payload bytes without changing locked inputs.
   return createHash('sha256').update(JSON.stringify({
-    format: 8, target, pythonVersion, pythonRelease, nodeVersion: pnpmVersion === undefined ? undefined : nodeVersion,
+    format: 9, target, pythonVersion, pythonRelease, nodeVersion: pnpmVersion === undefined ? undefined : nodeVersion,
     artifact: runtimeLock.targets[target], wheels, pythonPackages, pnpm: pnpmVersion,
   })).digest('hex')
 }
@@ -173,6 +173,23 @@ async function copyPnpmNativePackage(wrapper: string, destination: string, platf
     throw new Error(`primary runtime: pnpm ${basename(wrapper)} declares ${name} but it is not installed`, { cause: error })
   }
   await cp(dirname(manifest), join(destination, 'node_modules', '@pnpm', `exe.${platform}-${arch}`), { recursive: true, dereference: true })
+}
+
+/**
+ * Drop the wrapper's extra CLI aliases, which pnpm's install script hardlinks onto the same
+ * native executable. `cp` with `dereference` turns each hardlink into a full copy, so a 58 MB
+ * binary would ship once per declared `bin` name. Only `pnpm` is kept: the payload's entry
+ * point is `bin/pnpm.mjs`, which spawns the `@pnpm/exe.<platform>` binary and never runs them.
+ * @param pnpm - Unpacked pnpm package directory.
+ */
+export function prunePnpmAliasBins(pnpm: string): void {
+  const { bin } = JSON.parse(readFileSync(join(pnpm, 'package.json'), 'utf8')) as { bin?: Record<string, string> | string }
+  if (bin === undefined || typeof bin === 'string') return
+  const keeper = resolve(pnpm, bin.pnpm ?? 'pnpm')
+  for (const [name, target] of Object.entries(bin)) {
+    const path = resolve(pnpm, target)
+    if (name !== 'pnpm' && path !== keeper) rmSync(path, { force: true })
+  }
 }
 
 /**
@@ -251,6 +268,7 @@ export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOption
         await copyPnpmNativePackage(wrapper, destination, platform, arch)
       }
       prunePnpmForeignNativePackages(join(dependencies, 'pnpm'), platform, arch)
+      prunePnpmAliasBins(join(dependencies, 'pnpm'))
     }
     await extractTar({ file: await pythonArchive(target, paths.downloads), cwd: dependencies })
     const manifest: PrimaryRuntimeManifest = {
