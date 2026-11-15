@@ -1,5 +1,8 @@
 /** Desktop-specific selection of workspace and runtime-only dependency patches. */
 
+import { existsSync } from 'node:fs'
+import { isAbsolute } from 'node:path'
+
 /** A patch shared with the workspace, excluded from runtime installation, or supplied only to Desktop. */
 export type DesktopRuntimePatch =
   | { scope: 'shared'; reason: string }
@@ -26,7 +29,45 @@ export const DESKTOP_RUNTIME_PATCHES: Readonly<Record<string, DesktopRuntimePatc
 export const DESKTOP_RUNTIME_DEPENDENCY_OVERRIDES: Readonly<Record<string, string>> = {
   // The provider declares ^1.3.0; its patch is qualified against 1.3.0.
   '@earendil-works/pi-ai@^1.3.0': '1.3.0',
-  // LOCAL ONLY — Electron 44.11.3 fingerprint support for node-addon-require-builtin.
-  // See .desktop-build/local-addon-44.11/README.md; remove once the upstream release ships.
-  'node-addon-require-builtin-linux-x64-gnu@0.1.9': 'file:/home/yanli/work/deepseek-harness/.desktop-build/local-addon-44.11/node-addon-require-builtin-linux-x64-gnu-0.1.9.tgz',
+}
+
+/** Environment variable naming one build's extra dependency constraints, as a JSON object of `name@range` to spec. */
+export const DESKTOP_DEPENDENCY_OVERRIDES_ENV = 'DSH_DESKTOP_DEPENDENCY_OVERRIDES'
+
+/**
+ * Combine the reviewed constraints with the ones the caller describes for this build.
+ *
+ * A local prebuild of a registry package cannot live in this repository, because the
+ * path belongs to one host. `DSH_DESKTOP_DEPENDENCY_OVERRIDES` supplies it per build as
+ * `{"<name>@<range>": "<spec>"}`, so the runtime install resolves that package to the
+ * given `file:` tarball instead of the registry. Every entry is validated here, at the
+ * earliest point the value exists: a malformed payload, an unknown value type, or a
+ * `file:` spec whose absolute path is absent all fail rather than leave pnpm to resolve
+ * the registry package or fail later inside its own install.
+ * @param environment - Environment carrying the optional JSON object.
+ * @returns Dependency overrides for the temporary runtime project.
+ * @throws When the variable is set but malformed, or names a missing local file.
+ */
+export function runtimeDependencyOverrides(environment: NodeJS.ProcessEnv = process.env): Readonly<Record<string, string>> {
+  const raw = environment[DESKTOP_DEPENDENCY_OVERRIDES_ENV]?.trim()
+  if (raw === undefined || raw === '') return DESKTOP_RUNTIME_DEPENDENCY_OVERRIDES
+  let parsed: unknown
+  try { parsed = JSON.parse(raw) } catch (error) {
+    throw new Error(`${DESKTOP_DEPENDENCY_OVERRIDES_ENV} must be a JSON object of "name@range" to spec: ${(error as Error).message}`, { cause: error })
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`${DESKTOP_DEPENDENCY_OVERRIDES_ENV} must be a JSON object of "name@range" to spec`)
+  }
+  const overrides: Record<string, string> = { ...DESKTOP_RUNTIME_DEPENDENCY_OVERRIDES }
+  for (const [name, spec] of Object.entries(parsed)) {
+    if (name.trim() === '' || typeof spec !== 'string' || spec.trim() === '') {
+      throw new Error(`${DESKTOP_DEPENDENCY_OVERRIDES_ENV} entry ${JSON.stringify(name)} must map to a non-empty spec string`)
+    }
+    const local = /^(?:file|link):/u.exec(spec) === null ? undefined : spec.replace(/^(?:file|link):/u, '')
+    if (local !== undefined && isAbsolute(local) && !existsSync(local)) {
+      throw new Error(`${DESKTOP_DEPENDENCY_OVERRIDES_ENV} entry ${name} points at a missing path: ${local}`)
+    }
+    overrides[name] = spec.trim()
+  }
+  return overrides
 }

@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import yaml from 'js-yaml'
 import { valid } from 'semver'
-import { DESKTOP_RUNTIME_DEPENDENCY_OVERRIDES, DESKTOP_RUNTIME_PATCHES, type DesktopRuntimePatch } from './runtime-patch-policy.ts'
+import { DESKTOP_RUNTIME_PATCHES, runtimeDependencyOverrides, type DesktopRuntimePatch } from './runtime-patch-policy.ts'
 
 /** Expected patch bytes and package version for one independent installation. */
 export interface PreparedRuntimePatch {
@@ -45,7 +45,7 @@ function patchHash(bytes: Buffer): string {
 export function prepareRuntimePatches(
   projectRoot: string, repositoryRoot: string,
   policy: Readonly<Record<string, DesktopRuntimePatch>> = DESKTOP_RUNTIME_PATCHES,
-  overrides: Readonly<Record<string, string>> = DESKTOP_RUNTIME_DEPENDENCY_OVERRIDES,
+  overrides: Readonly<Record<string, string>> = runtimeDependencyOverrides(),
 ): PreparedRuntimePatches {
   if (resolve(projectRoot) === resolve(repositoryRoot)) throw new Error('desktop patches: destination must not be the source workspace')
   const source = yaml.load(readFileSync(join(repositoryRoot, 'pnpm-workspace.yaml'), 'utf8')) as {
