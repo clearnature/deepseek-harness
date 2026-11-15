@@ -26,4 +26,7 @@ export const DESKTOP_RUNTIME_PATCHES: Readonly<Record<string, DesktopRuntimePatc
 export const DESKTOP_RUNTIME_DEPENDENCY_OVERRIDES: Readonly<Record<string, string>> = {
   // The provider declares ^1.3.0; its patch is qualified against 1.3.0.
   '@earendil-works/pi-ai@^1.3.0': '1.3.0',
+  // LOCAL ONLY — Electron 44.11.3 fingerprint support for node-addon-require-builtin.
+  // See .desktop-build/local-addon-44.11/README.md; remove once the upstream release ships.
+  'node-addon-require-builtin-linux-x64-gnu@0.1.9': 'file:/home/yanli/work/deepseek-harness/.desktop-build/local-addon-44.11/node-addon-require-builtin-linux-x64-gnu-0.1.9.tgz',
 }
