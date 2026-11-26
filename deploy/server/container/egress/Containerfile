@@ -1,0 +1,13 @@
+# P3：出站白名单代理（squid），只允许白名单域名
+# 构建：podman build -t dsh-egress:latest deploy/server/container/egress/
+FROM docker.io/library/debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends squid \
+ && rm -rf /var/lib/apt/lists/*
+COPY squid.conf /etc/squid/squid.conf
+RUN mkdir -p /var/spool/squid /var/log/squid \
+ && chown -R proxy:proxy /var/spool/squid /var/log/squid \
+ && squid -z -f /etc/squid/squid.conf || true
+RUN rm -f /tmp/squid.pid
+EXPOSE 3128
+CMD ["sh","-c","squid -z -f /etc/squid/squid.conf >/dev/null 2>&1 || true; rm -f /tmp/squid.pid; exec squid -N -f /etc/squid/squid.conf"]

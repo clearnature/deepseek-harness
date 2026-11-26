@@ -1,0 +1,17 @@
+[Unit]
+Description=DSH egress allowlist proxy (squid container)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=EGRESS_IMAGE=dsh-egress:latest
+Environment=INTERNAL_NET=dsh-int
+Environment=OUTBOUND_NET=podman
+ExecStart=/usr/local/lib/dsh-container/run-egress.sh
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

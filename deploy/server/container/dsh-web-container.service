@@ -1,0 +1,31 @@
+[Unit]
+Requires=dsh-egress-container.service
+After=dsh-egress-container.service
+Description=DeepSeek Harness Web UI (P3 container, internal network + egress allowlist)
+Documentation=https://github.com/clearnature/deepseek-harness/tree/server
+After=network-online.target
+Wants=network-online.target
+# 与 dsh-web.service 互斥（同一实例只能存在一个）
+
+[Service]
+Type=simple
+# rootful podman（rootless 见 README，需改用 User=dsh + XDG_RUNTIME_DIR）
+Environment=APP_DIR=/opt/dsh/app
+Environment=DSH_HOME_DIR=/opt/dsh/data
+Environment=DSH_HOME_PATH=/home/node
+Environment=WORK_DIR=/opt/dsh/work
+Environment=IMAGE=dsh-web-p2:latest
+Environment=DOMAIN=aecci.net
+Environment=PUBLIC_PORT=8443
+ExecStart=/usr/local/lib/dsh-container/run-dsh-web.sh
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+
+# 输出供 dsh-gate 解析 launch token（root 持有、agent 只读）
+StandardOutput=append:/var/log/dsh-web/web.log
+StandardError=append:/var/log/dsh-web/web.log
+ExecStartPre=+/usr/bin/truncate -s 0 /var/log/dsh-web/web.log
+
+[Install]
+WantedBy=multi-user.target

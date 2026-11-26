@@ -1,0 +1,64 @@
+[Unit]
+Description=DeepSeek Harness Web UI (host mode, hardened)
+Documentation=https://github.com/clearnature/deepseek-harness/tree/server
+After=network-online.target dsh-egress.service
+Wants=network-online.target dsh-egress.service
+
+[Service]
+Type=simple
+User=__APP_USER__
+Group=__APP_USER__
+WorkingDirectory=__APP_DIR__
+Environment=HOME=__DSH_HOME__
+Environment=DSH_HOME=__DSH_HOME__
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:__TOOLCHAIN_DIR__/node/bin
+Environment=NODE_ENV=production
+Environment=NODE_USE_ENV_PROXY=1
+Environment=HTTPS_PROXY=http://127.0.0.1:__EGRESS_PORT__
+Environment=HTTP_PROXY=http://127.0.0.1:__EGRESS_PORT__
+Environment=NO_PROXY=localhost,127.0.0.1
+Environment=no_proxy=localhost,127.0.0.1
+Environment=PIP_BREAK_SYSTEM_PACKAGES=1
+ExecStartPre=+/usr/bin/truncate -s 0 __WEB_LOG_DIR__/web.log
+ExecStart=__NODE_BIN__ --import tsx/esm apps/cli/src/bin.ts web --no-open --host __HOST__ --port __UPSTREAM_PORT__ --public-url https://__DOMAIN__:__PUBLIC_PORT__/ --trusted-host __DOMAIN__:__PUBLIC_PORT__
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+
+# ---- 资源限额（2GB 宿主机）----
+MemoryMax=1200M
+CPUQuota=150%
+TasksMax=512
+
+# ---- 沙箱加固 ----
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=__APP_DIR__
+ReadWritePaths=__DSH_HOME__ /opt/dsh/work
+InaccessiblePaths=/etc/dsh-gate /var/lib/dsh-gate /etc/nginx /etc/v2ray /var/log/nginx /root
+ProtectProc=invisible
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+RemoveIPC=yes
+
+StandardOutput=append:__WEB_LOG_DIR__/web.log
+StandardError=append:__WEB_LOG_DIR__/web.log
+
+[Install]
+WantedBy=multi-user.target

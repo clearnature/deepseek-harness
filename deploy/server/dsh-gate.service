@@ -1,0 +1,60 @@
+[Unit]
+Description=DeepSeek Harness login gate (auth reverse proxy)
+Documentation=https://github.com/clearnature/deepseek-harness/tree/server
+After=network-online.target dsh-web.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 独立系统用户：与 dsh-web（agent）不同 uid，agent 读不到网关口令/会话
+User=__GATE_USER__
+Group=__GATE_USER__
+# 只读共享组：用于读取 dsh-web 写出的 launch token 日志
+SupplementaryGroups=__SHARED_GROUP__
+WorkingDirectory=__GATE_LIB__
+Environment=HOME=__GATE_STATE_DIR__
+Environment=DSH_GATE_PORT=__GATE_PORT__
+Environment=DSH_UPSTREAM_HOST=127.0.0.1
+Environment=DSH_UPSTREAM_PORT=__UPSTREAM_PORT__
+Environment=DSH_GATE_USERS=__GATE_ETC__/users.json
+Environment=DSH_GATE_SESSIONS=__GATE_STATE_DIR__/sessions.json
+Environment=DSH_WEB_LOG=__WEB_LOG_DIR__/web.log
+Environment=NODE_ENV=production
+# 使用 root 所有的系统 Node（不要用 agent 可写的 toolchain 里的 node）
+ExecStart=__NODE_BIN__ __GATE_LIB__/server.mjs
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+StateDirectory=__GATE_STATE_NAME__
+StateDirectoryMode=0700
+
+# ---- 沙箱加固 ----
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RemoveIPC=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+ReadWritePaths=__GATE_STATE_DIR__
+MemoryHigh=200M
+MemoryMax=400M
+CPUQuota=100%
+
+[Install]
+WantedBy=multi-user.target

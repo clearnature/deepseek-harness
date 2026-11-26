@@ -1,0 +1,23 @@
+[Unit]
+Description=DSH egress allowlist proxy (host squid, 127.0.0.1:__EGRESS_PORT__)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=squid
+Group=squid
+ExecStart=/usr/sbin/squid -N -f /etc/dsh-egress/squid.conf
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/spool/squid /var/log/squid
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

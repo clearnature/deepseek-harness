@@ -8,6 +8,10 @@ import { relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import ts from 'typescript'
+
+/** 编译调用可指向外部 tsc（如 TypeScript 7 原生/新版二进制），默认用仓库内 tsc。 */
+const compilerBinary = (): string =>
+  process.env.DSH_TSC_BIN ?? fileURLToPath(import.meta.resolve('typescript/bin/tsc'))
 import { pnpmCommand } from './release/process.ts'
 
 type CompilationMode = 'checked' | 'benchmark-emit'
@@ -78,7 +82,7 @@ export function referencedProjectsCompilerArgs(
   }
   return [
     ...hostHeapArgs(face),
-    fileURLToPath(import.meta.resolve('typescript/bin/tsc')),
+    compilerBinary(),
     '-b',
     ...mode === 'benchmark-emit' ? ['--noCheck'] : [],
     // Relative arguments keep the complete workspace graph below Windows' command-line limit.
@@ -94,7 +98,7 @@ export function referencedProjectsCompilerArgs(
  * @returns Arguments for `process.execPath`, run from the repository root.
  */
 export function aggregateCheckArgs(face: 'host' | 'client'): string[] {
-  return ['--max-old-space-size=8192', fileURLToPath(import.meta.resolve('typescript/bin/tsc')), '-p', `tsconfig.${face}.json`]
+  return ['--max-old-space-size=8192', compilerBinary(), '-p', `tsconfig.${face}.json`]
 }
 
 /**
@@ -105,7 +109,7 @@ export function aggregateCheckArgs(face: 'host' | 'client'): string[] {
  * @returns Arguments for `process.execPath`, run from the repository root.
  */
 export function aggregateBuildArgs(face: 'host' | 'client'): string[] {
-  return ['--max-old-space-size=8192', fileURLToPath(import.meta.resolve('typescript/bin/tsc')), '-b', `tsconfig.${face}.json`]
+  return ['--max-old-space-size=8192', compilerBinary(), '-b', `tsconfig.${face}.json`]
 }
 
 function hostHeapArgs(face: 'host' | 'client'): string[] {
